@@ -273,7 +273,7 @@ Nota: cambiar package **car**-->**carData** ya que los conjuntos de datos se alm
 data(Salaries, package="carData")
         library(ggplot2)
         mytheme <- theme(plot.title=element_text(face="bold.italic",
-                         size="14", color="brown"),
+                         size=14, color="brown"),
                          axis.title=element_text(face="bold.italic",
                             size=10, color="brown"),
                          axis.text=element_text(face="bold", size=9,
@@ -320,7 +320,7 @@ library(plotly)
 data(Salaries, package="carData")
         library(ggplot2)
         mytheme <- theme(plot.title=element_text(face="bold.italic",
-                         size="14", color="brown"),
+                         size=14, color="brown"),
                          axis.title=element_text(face="bold.italic",
                             size=10, color="brown"),
                          axis.text=element_text(face="bold", size=9,
