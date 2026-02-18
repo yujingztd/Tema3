@@ -1,0 +1,445 @@
+---
+title: "Manual docente ampliado: Visualización de datos en R con ggplot2 (estilo Data-to-Viz). Generado con IA"
+author: ""
+date: "`r format(Sys.Date(), '%d-%m-%Y')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 4
+    number_sections: true
+    theme: readable
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(forcats)
+library(pacman)
+p_load('maps')
+```
+
+> **Objetivo**: escoger el gráfico adecuado según el tipo de variables (numéricas, categóricas, temporales, espaciales, relacionales) y el objetivo (comparar, distribución, relación, composición), con ejemplos reproducibles y consejos de corrección (errores típicos).  
+> Inspirado en la lógica de selección de *From Data to Viz* (data-to-viz.com).
+
+#  Checklist rápido (antes de graficar)
+
+##  Preguntas de selección (tipo Data-to-Viz)
+- **¿Cuántas variables** quieres representar? (1 / 2 / 3+)
+- **¿Qué tipo** es cada variable? (numérica / categórica / temporal / espacial / red)
+- **¿Qué quieres comunicar?**
+  - Distribución
+  - Comparación entre grupos
+  - Relación / correlación
+  - Evolución temporal
+  - Composición (partes de un todo)
+  - Jerarquía / flujo (Sankey)
+  - Estructura relacional (red)
+
+##  Errores comunes (en corrección)
+- Usar **gráficos de tarta** con muchas categorías (mejor barras).
+- Usar **3D** sin necesidad (dificulta lectura).
+- No etiquetar ejes/unidades o no indicar escala.
+- Comparar distribuciones sin mostrar **variabilidad** (p.ej., solo medias sin error bars).
+- Ocultar outliers sin justificar (o usar límites sin avisar).
+- Ejes no empezando en 0 en barras (puede engañar).
+- Sobrecargar con demasiadas variables sin facetas/color/tamaño coherente.
+
+---
+
+#  Univariante (1 variable)
+
+##  Una variable numérica
+
+### (A) Histograma
+**Cuándo usarlo:** distribución, asimetría, multimodalidad.  
+**Errores comunes:** bins demasiado pocos o demasiados; comparar grupos sin facetas.
+
+```{r}
+ggplot(mtcars, aes(x = mpg)) +
+  geom_histogram(bins = 12) +
+  labs(title = "Histograma", x = "mpg", y = "Frecuencia")
+```
+
+### (B) Densidad (KDE)
+**Cuándo:** comparar formas suavizadas, especialmente con varias categorías.  
+**Error común:** comparar densidades sin mismo ancho de banda en contextos críticos.
+
+```{r}
+ggplot(mtcars, aes(x = mpg)) +
+  geom_density() +
+  labs(title = "Densidad", x = "mpg", y = "Densidad")
+```
+
+### (C) Boxplot
+**Cuándo:** comparar distribución resumida y outliers.  
+**Error común:** interpretar “bigotes” como min/max siempre (depende de la definición).
+
+```{r}
+ggplot(mtcars, aes(y = mpg)) +
+  geom_boxplot() +
+  labs(title = "Boxplot", y = "mpg")
+```
+
+### (D) Ridgeline (avanzado, 1 numérica por grupo)
+> Requiere `ggridges`.
+
+```{r, eval=TRUE}
+#install.packages("ggridges")
+library(ggridges)
+
+ggplot(mtcars, aes(x = mpg, y = factor(cyl), fill = factor(cyl))) +
+  geom_density_ridges(alpha = 0.6) +
+  labs(title = "Ridgeline: mpg por cyl", x = "mpg", y = "cyl")
+```
+
+---
+
+##  Una variable categórica
+
+### (A) Barras (frecuencias)
+**Cuándo:** conteos por categoría.  
+**Error común:** no ordenar categorías o mezclar categorías raras con otras.
+
+```{r}
+ggplot(mtcars, aes(x = factor(cyl))) +
+  geom_bar() +
+  labs(title = "Barras de frecuencias", x = "cyl", y = "Conteo")
+```
+
+### (B) Barras ordenadas
+```{r}
+mtcars %>%
+  mutate(cyl = factor(cyl)) %>%
+  count(cyl) %>%
+  ggplot(aes(x = fct_reorder(cyl, n), y = n)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Barras ordenadas", x = "cyl", y = "Frecuencia")
+```
+
+---
+
+##  Una variable temporal
+
+### Serie temporal (línea)
+**Cuándo:** evolución en el tiempo.  
+**Errores comunes:** irregularidad temporal sin indicar; unir puntos con huecos sin avisar.
+
+```{r}
+set.seed(1)
+df_time <- tibble(
+  date = seq.Date(as.Date("2026-01-01"), by = "day", length.out = 60),
+  value = cumsum(rnorm(60))
+)
+
+ggplot(df_time, aes(x = date, y = value)) +
+  geom_line() +
+  labs(title = "Serie temporal", x = "Fecha", y = "Valor")
+```
+
+### Media móvil (avanzado)
+```{r}
+df_time <- df_time %>%
+  mutate(ma7 = stats::filter(value, rep(1/7, 7), sides = 1))
+
+ggplot(df_time, aes(date)) +
+  geom_line(aes(y = value)) +
+  geom_line(aes(y = ma7), linewidth = 1) +
+  labs(title = "Serie + media móvil (7 días)", x = "Fecha", y = "Valor")
+```
+
+---
+
+#  Bivariante (2 variables)
+
+##  Dos variables numéricas
+
+### (A) Dispersión (scatter)
+**Cuándo:** relación/correlación, clusters.  
+**Error común:** overplotting (muchos puntos) -> usar alpha/hexbin.
+
+```{r}
+ggplot(mtcars, aes(x = wt, y = mpg)) +
+  geom_point() +
+  labs(title = "Scatter: wt vs mpg", x = "wt", y = "mpg")
+```
+
+### (B) Tendencia (regresión)
+```{r}
+ggplot(mtcars, aes(wt, mpg)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  labs(title = "Scatter + tendencia (lm)", x = "wt", y = "mpg")
+```
+
+### (C) Hexbin (muchos puntos)
+```{r}
+#install.packages('hexbin')
+ggplot(diamonds, aes(carat, price)) +
+  geom_hex(bins = 30) +
+  labs(title = "Hexbin: diamonds", x = "carat", y = "price")
+```
+
+---
+
+##  Numérica + categórica
+
+### (A) Boxplot por grupo
+**Cuándo:** comparar distribuciones entre categorías.  
+**Errores comunes:** pocos datos por grupo; no mostrar puntos.
+
+```{r}
+ggplot(mtcars, aes(x = factor(cyl), y = mpg)) +
+  geom_boxplot() +
+  labs(title = "Boxplot mpg por cyl", x = "cyl", y = "mpg")
+```
+
+### (B) Violin + puntos (más informativo)
+```{r}
+ggplot(mtcars, aes(x = factor(cyl), y = mpg)) +
+  geom_violin(trim = FALSE, alpha = 0.5) +
+  geom_jitter(width = 0.1, height = 0) +
+  labs(title = "Violin + jitter", x = "cyl", y = "mpg")
+```
+
+### (C) Raincloud (avanzado)
+> Requiere `ggdist`.
+
+```{r, eval=TRUE}
+#install.packages("ggdist")
+library(ggdist)
+
+ggplot(mtcars, aes(x = mpg, y = factor(cyl), fill = factor(cyl))) +
+  stat_halfeye(adjust = 0.5, width = 0.6, .width = 0) +
+  geom_boxplot(width = 0.15, outlier.shape = NA) +
+  geom_point(position = position_jitter(width = 0.05), size = 1, alpha = 0.6) +
+  labs(title = "Raincloud (half-eye + box + points)", x = "mpg", y = "cyl")
+```
+
+---
+
+##  Dos variables categóricas
+
+### (A) Heatmap de conteos (tile)
+**Cuándo:** tabla de contingencia visual.  
+**Error común:** no usar escala perceptual o no indicar totales.
+
+```{r}
+df_cat <- mtcars %>%
+  transmute(cyl = factor(cyl), gear = factor(gear)) %>%
+  count(cyl, gear)
+
+ggplot(df_cat, aes(x = cyl, y = gear, fill = n)) +
+  geom_tile() +
+  labs(title = "Heatmap de conteos: cyl vs gear", x = "cyl", y = "gear")
+```
+
+### (B) Barras apiladas (proporción)
+```{r}
+ggplot(mtcars, aes(x = factor(cyl), fill = factor(gear))) +
+  geom_bar(position = "fill") +
+  labs(title = "Proporciones: gear dentro de cyl", x = "cyl", y = "Proporción", fill = "gear")
+```
+
+### (C) Mosaic plot (mosaico) con ggplot
+> Requiere `ggmosaic`.
+
+```{r, eval=FALSE}
+#install.packages("ggmosaic")
+#install.packages("ggmosaic", repos ="https://cloud.r-project.org/")
+
+library(ggmosaic)
+
+ggplot(data = mtcars) +
+  geom_mosaic(aes(x = product(factor(cyl)), fill = factor(gear))) +
+  labs(title = "Mosaic plot: cyl vs gear", x = "cyl", fill = "gear")
+```
+
+**Cuándo usar mosaico:** dos categóricas, para visualizar proporciones simultáneamente.  
+**Errores comunes:** demasiadas categorías -> se vuelve ilegible; agrupar niveles raros.
+
+---
+
+#  Multivariante (3+ variables)
+
+##  2 numéricas + 1 categórica (color / shape)
+
+```{r}
+ggplot(mtcars, aes(wt, mpg, color = factor(cyl))) +
+  geom_point(size = 2) +
+  labs(title = "3 variables: color por cyl", x = "wt", y = "mpg", color = "cyl")
+```
+
+##  2 numéricas + 1 numérica (tamaño)
+
+```{r}
+ggplot(mtcars, aes(wt, mpg, size = hp)) +
+  geom_point(alpha = 0.7) +
+  labs(title = "3 variables: tamaño por hp", x = "wt", y = "mpg", size = "hp")
+```
+
+##  Facetas (small multiples)
+**Cuándo:** comparar patrones por subgrupos sin saturar el gráfico.  
+**Error común:** demasiadas facetas (mejor filtrar o agrupar).
+
+```{r}
+ggplot(mtcars, aes(wt, mpg)) +
+  geom_point() +
+  facet_wrap(~ factor(cyl)) +
+  labs(title = "Facetas por cyl", x = "wt", y = "mpg")
+```
+
+##  Matriz de correlación (muchas numéricas)
+
+```{r}
+num_vars <- mtcars %>% select(mpg, disp, hp, wt, qsec)
+cormat <- cor(num_vars)
+
+cormat_long <- as.data.frame(as.table(cormat)) %>%
+  rename(var1 = Var1, var2 = Var2, corr = Freq)
+
+ggplot(cormat_long, aes(var1, var2, fill = corr)) +
+  geom_tile() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Matriz de correlación", x = "", y = "")
+```
+
+---
+
+#  Composición y estructura
+
+##  Partes de un todo (evitar tartas si hay muchas categorías)
+
+### Barras apiladas (conteo)
+```{r}
+ggplot(mtcars, aes(x = factor(cyl), fill = factor(gear))) +
+  geom_bar() +
+  labs(title = "Barras apiladas (conteo)", x = "cyl", fill = "gear")
+```
+
+### Barras 100% (proporciones)
+```{r}
+ggplot(mtcars, aes(x = factor(cyl), fill = factor(gear))) +
+  geom_bar(position = "fill") +
+  labs(title = "Barras 100% (proporción)", x = "cyl", y = "Proporción", fill = "gear")
+```
+
+##  Sankey / Alluvial (flujos entre categorías)
+> Requiere `ggalluvial` (estático).
+
+```{r, eval=TRUE}
+#install.packages("ggalluvial")
+library(ggalluvial)
+
+set.seed(1)
+df_flow <- tibble(
+  etapa1 = sample(c("A","B","C"), 200, replace = TRUE),
+  etapa2 = sample(c("X","Y"), 200, replace = TRUE),
+  etapa3 = sample(c("K","L","M"), 200, replace = TRUE)
+) %>%
+  count(etapa1, etapa2, etapa3, name = "n")
+
+ggplot(df_flow,
+       aes(axis1 = etapa1, axis2 = etapa2, axis3 = etapa3, y = n)) +
+  scale_x_discrete(limits = c("Etapa 1", "Etapa 2", "Etapa 3")) +
+  geom_alluvium(aes(fill = etapa1), width = 1/12) +
+  geom_stratum(width = 1/12, fill = "grey90", color = "grey30") +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 3) +
+  labs(title = "Sankey/Alluvial (ggalluvial)", y = "Frecuencia")
+```
+
+---
+
+#  Mapas (espacial)
+
+##  Mapa coroplético simple con `map_data`
+```{r}
+world <- map_data("world")
+set.seed(1)
+vals <- world %>% distinct(region) %>% mutate(value = runif(n(), 0, 1))
+world2 <- world %>% left_join(vals, by = "region")
+
+ggplot(world2, aes(long, lat, group = group, fill = value)) +
+  geom_polygon(color = "white", linewidth = 0.1) +
+  coord_quickmap() +
+  labs(title = "Mapa coroplético (ejemplo sintético)", fill = "value")
+```
+
+##  Mapas con `sf` (recomendado)
+```{r, eval=TRUE}
+#install.packages(c("sf", "rnaturalearth", "rnaturalearthdata"))
+library(sf)
+library(rnaturalearth)
+
+world_sf <- rnaturalearth::ne_countries(scale = "medium", returnclass = "sf")
+set.seed(1)
+world_sf$value <- runif(nrow(world_sf))
+
+ggplot(world_sf) +
+  geom_sf(aes(fill = value), color = "white", linewidth = 0.1) +
+  labs(title = "Mapa con sf", fill = "value")
+```
+
+---
+
+#  Redes (relaciones)
+
+##  Red con ggraph (avanzado)
+```{r, eval=TRUE}
+#install.packages(c("igraph", "ggraph"))
+library(igraph)
+library(ggraph)
+library(grid)
+
+edges <- tibble(
+  from = c("A","A","B","C","D","E","F"),
+  to   = c("B","C","D","D","E","F","A")
+)
+g <- graph_from_data_frame(edges, directed = TRUE)
+
+ggraph(g, layout = "fr") +
+  geom_edge_link(arrow = arrow(length = unit(4, 'mm'))) +
+  geom_node_point(size = 4) +
+  geom_node_text(aes(label = name), vjust = -1) +
+  labs(title = "Red (ggraph)")
+```
+
+---
+
+#  Buenas prácticas
+
+##  Elementos mínimos
+- Título informativo + subtítulo (contexto)
+- Ejes con unidades
+- Leyenda clara
+- Escala adecuada (log si procede y se justifica)
+- Fuente de datos
+
+##  Ejemplo de “gráfico correcto”
+```{r}
+ggplot(mtcars, aes(wt, mpg, color = factor(cyl))) +
+  geom_point(size = 2, alpha = 0.8) +
+  labs(
+    title = "Consumo vs peso del vehículo",
+    subtitle = "Datos: mtcars. Color = nº cilindros",
+    x = "Peso (wt)",
+    y = "Millas por galón (mpg)",
+    color = "Cilindros"
+  ) +
+  theme_minimal()
+```
+
+---
+
+#  Apéndice: instalación de paquetes (opcional)
+
+```{r, eval=FALSE}
+install.packages(c(
+  "ggplot2","dplyr","tidyr","forcats",
+  "ggridges","ggdist","ggmosaic","ggalluvial",
+  "sf","rnaturalearth","rnaturalearthdata",
+  "igraph","ggraph"
+))
+```
